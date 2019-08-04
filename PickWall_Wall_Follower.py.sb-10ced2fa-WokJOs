@@ -1,0 +1,161 @@
+#!/usr/bin/env python
+
+import numpy as np
+import sys, math, random, copy
+import rospy, copy, time
+from sensor_msgs.msg import LaserScan, Joy, Image
+from ackermann_msgs.msg import AckermannDriveStamped
+from color_segmentation import cd_color_segmentation
+from newZed import Zed_converter
+from cv_bridge import CvBridge, CvBridgeError
+import cv2
+from scipy import stats
+
+def wall_follower(direction, distance, data):
+    data = data
+    des_dist_middle = distance
+    print("desired_distance", des_dist_middle)
+    des_dist_front = des_dist_middle / math.sin(math.pi/4)
+    middle_right = data[160:201]
+    front_right = data[340:380]
+    top = data[520:560]
+    middle_left = data[700:740]
+    front_left = data[680:720]
+
+    middle_right_point = np.median(middle_right)
+    front_right_point = np.median(front_right)
+    top_point = np.median(top)
+    middle_left_point = np.median(middle_left)
+    front_left_point = np.median(front_left)
+    '''
+    print("Top point: ", top_point)
+    print("Middle Right Point: ", middle_right_point)
+    print("Middle Left Point: ", middle_left_point)
+    print("Front Right Point: ", front_right_point)
+    print("Front Left Point: ", front_left_point)
+    '''
+
+    delta = 0.0
+    angle = 0.0
+    "Compare the two points are turn to the left or right based on the orientation of the points compared to the wall."
+    if direction == 1:
+        if top_point < 3 * des_dist_front:
+        #angle = 1
+            l = (middle_left_point + front_left_point)/2
+            r = (middle_right_point + front_right_point)/2
+            if l > r:
+                angle = 1
+            
+            else:
+                angle = -1
+        else:
+            angle = left_wall_follower(des_dist_middle, middle_left_point, delta, front_left_point)
+    elif direction == -1:
+        if top_point < 3 * des_dist_front:
+            l = (middle_left_point + front_left_point)/2
+            r = (middle_right_point + front_right_point)/2
+            if l > r:
+                angle = 1
+            
+            else:
+                angle = -1
+        else:
+            angle = right_wall_follower(des_dist_middle, middle_right_point, delta, front_right_point)
+    else:
+        if top_point < des_dist_middle + (delta * 2): #was des.dis + delta before
+            l = (middle_left_point + front_left_point)/2
+            r = (middle_right_point + front_right_point)/2
+            if l > r:
+                direction = 1
+                angle = left_wall_follower(des_dist_middle, middle_left_point, delta, front_left_point)
+
+            else:
+                direction = -1
+                angle = right_wall_follower(des_dist_middle, middle_right_point, delta, front_right_point)
+
+        else:
+            if direction == 1:
+               angle = left_wall_follower(des_dist_middle, middle_left_point, delta, front_left_point)
+            else:
+                angle = right_wall_follower(des_dist_middle, middle_right_point, delta, front_right_point)
+    return angle
+
+def right_wall_follower(distance, middle, delta, front):
+    #print("right")
+    delta = delta
+    front_right_point = front
+    des_dist_middle = distance
+    middle_right_point = middle
+    des_dist_front = des_dist_middle / math.sin(math.pi/4)
+    if middle_right_point > des_dist_middle + delta and front_right_point > des_dist_front + delta:
+        angle = -1
+        angle = (float((middle_right_point/des_dist_middle)) - 1)*-1
+        #print("LOOP 1")
+    elif middle_right_point < des_dist_middle - delta and front_right_point > des_dist_front + delta:
+        angle = (1 - float((middle_right_point/des_dist_middle)))*1
+        #angle = -1
+        #print("LOOP 2")
+    elif (middle_right_point > des_dist_middle + delta) and (front_right_point < des_dist_front - delta):
+        angle =  float((middle_right_point/des_dist_middle)) - 1
+        #print("LOOP 3")
+        #angle = 1
+    elif middle_right_point < des_dist_middle - delta and front_right_point < des_dist_front - delta:
+        angle = (1 - float((middle_right_point/des_dist_middle)))
+        #print("LOOP 4")
+        #angle = 1
+    else:
+        angle = 0.0
+        #print("LOOP 5")
+    #check_safe()
+    angle /=5
+    #print("angle", angle)
+    return angle
+
+def left_wall_follower(distance, middle, delta, front):
+    #print("left")
+    delta = delta
+    front_left_point = front
+    des_dist_middle = distance + 0.5
+    middle_left_point = middle
+    des_dist_front = des_dist_middle / math.sin(math.pi/4)
+    if middle_left_point > des_dist_middle + delta and front_left_point > des_dist_front + delta:
+        #angle = 1
+        angle = min((float((middle_left_point/des_dist_middle)) - 1)*1, 1)
+
+        #print("LOOP 1")
+    elif middle_left_point < des_dist_middle - delta and front_left_point > des_dist_front + delta:
+        angle = min((1 - float((middle_left_point/des_dist_middle)))*-1, 1)
+        #angle = 1
+        #print("LOOP 2")
+    elif (middle_left_point > des_dist_middle + delta) and (front_left_point < des_dist_front - delta):
+        angle =  max((float((middle_left_point/des_dist_middle)) - 1)*-1,-1)
+        #print("LOOP 3")
+        #angle = -1
+    elif middle_left_point < des_dist_middle - delta and front_left_point < des_dist_front - delta:
+        angle = max(((1 - float((middle_left_point/des_dist_middle))))*-1, -1)
+        #print("LOOP 4")
+        #angle = -1
+    else:
+        angle = 0.0
+        #print("LOOP 5")
+    #check_safe()
+    angle /=3
+    #print("angle", angle)
+    return angle
+    '''
+    def check_safe(self):
+    front = data[19*len(data)/40:21*len(data)/40]
+    if timer <= 0:
+        if min(front) < 0.3+(cmd.drive.speed/5.0):
+            timer = 10
+    #                index = front.index(min(front))
+    #                if index > 540:
+    #                    dir = -1
+    #                else:
+    #                    dir = 1
+    else:
+        timer -= 1
+    #            angle = dir
+        cmd.drive.speed = -0.5
+    print(timer,dir)
+    '''

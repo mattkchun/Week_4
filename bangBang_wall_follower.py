@@ -137,7 +137,7 @@ class wall_follower:
         else:
             self.cmd.drive.steering_angle = 0
             print("LOOP 5")
-        self.check_safe()
+        #self.check_safe()
         self.drive_pub.publish(self.cmd)
         print("angle", self.cmd.drive.steering_angle)
 
@@ -166,10 +166,10 @@ class wall_follower:
         else:
             self.cmd.drive.steering_angle = 0
             print("LOOP 5")
-        self.check_safe()
+        #self.check_safe()
         self.drive_pub.publish(self.cmd)
         print("angle", self.cmd.drive.steering_angle)
-
+    '''
     def check_safe(self):
         front = self.data[19*len(self.data)/40:21*len(self.data)/40]
         if self.timer <= 0:
@@ -185,6 +185,7 @@ class wall_follower:
 #            self.cmd.drive.steering_angle = self.dir
             self.cmd.drive.speed = -0.5
         print(self.timer,self.dir)
+    '''
 
 
 if __name__ == "__main__":
